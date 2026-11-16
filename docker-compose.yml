@@ -1,19 +1,27 @@
-# Baseline layout: one default network, only the app is published (to localhost).
-# Qdrant and Ollama are reachable from other containers but not from the host.
-# The `security` branch is where this gets locked down.
+# Containment layout:
+#   backend (internal: true)  -> qdrant, ollama. No route out, nothing can reach them from the host.
+#   edge                      -> only `app` bridges both, publishing 127.0.0.1:8000.
+#   egress                    -> only the one-shot `pull` job (profile: setup) to fetch models.
 services:
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:latest        # exercise: pin by digest
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?run ./init.sh}
+      QDRANT__TELEMETRY_DISABLED: "true"
     volumes: [qdrant_data:/qdrant/storage]
+    networks: [backend]
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:latest        # exercise: pin by digest
     volumes: [ollama_data:/root/.ollama]
+    networks: [backend]
 
   app:
     build: .
     environment:
+      JWT_SECRET: ${JWT_SECRET:?run ./init.sh}
       QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
       OLLAMA_URL: http://ollama:11434
       EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
       LLM_MODEL: ${LLM_MODEL:-llama3.2:1b}
@@ -21,8 +29,43 @@ services:
     volumes:
       - ./app:/app:ro
       - ./corpus:/corpus:ro
+      - ./users.json:/users.json:ro
+      - state:/state
     depends_on: [qdrant, ollama]
+    networks: [backend, edge]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  # --- one-shot jobs ---
+  pull:
+    image: ollama/ollama:latest
+    profiles: [setup]
+    environment:
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      LLM_MODEL: ${LLM_MODEL:-llama3.2:1b}
+    volumes: [ollama_data:/root/.ollama]
+    networks: [egress]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama serve >/dev/null 2>&1 & until ollama list >/dev/null 2>&1; do sleep 1; done; ollama pull $$EMBED_MODEL && ollama pull $$LLM_MODEL"]
+
+  probe:                               # sits on the backend network only; used by scripts/verify-containment.sh
+    build: .
+    profiles: [verify]
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+    volumes: [./scripts:/scripts:ro]
+    networks: [backend]
+    command: ["python", "/scripts/probe.py"]
+
+networks:
+  backend: {internal: true}
+  edge: {}
+  egress: {}
 
 volumes:
   qdrant_data:
   ollama_data:
+  state:
