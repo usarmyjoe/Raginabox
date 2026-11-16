@@ -31,7 +31,7 @@ Drop `.md` or `.txt` files in `corpus/` and re-run `ingest`. It only re-embeds w
 
 ## How it works
 
-1. **Chunk:** split on markdown headings, then into windows of `CHUNK_CHARS`. Every chunk is prefixed with `file > heading path` (the breadcrumb).
+1. **Chunk:** split on markdown headings, then pack whole sentences (code fences and list/table blocks stay intact) up to `CHUNK_CHARS`. Each new chunk repeats the last `CHUNK_OVERLAP_UNITS` unit(s) of the previous one. Every chunk is prefixed with `file > heading path` (the breadcrumb). Sentence splitting is a small regex, with no NLTK or model download, so it works offline. Known limit: it splits after abbreviations like "Dr." when a capitalised name follows.
 2. **Embed:** Ollama `/api/embed`. Documents and queries use different prefixes (a `nomic-embed-text` convention).
 3. **Store:** Qdrant, one collection per embedding model, so swapping models never mixes vector spaces.
 4. **Retrieve:** top-k cosine similarity.

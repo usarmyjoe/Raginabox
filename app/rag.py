@@ -16,6 +16,7 @@ LLM_MODEL = os.getenv("LLM_MODEL", "llama3.2:1b")
 BACKEND = os.getenv("EMBED_BACKEND", "ollama")  # "fake" = offline hashing embedder for tests
 CORPUS = Path(os.getenv("CORPUS_DIR", "/corpus"))
 MAX_CHARS = int(os.getenv("CHUNK_CHARS", "1200"))
+OVERLAP_UNITS = int(os.getenv("CHUNK_OVERLAP_UNITS", "1"))  # sentences/blocks repeated at the start of the next chunk
 TOP_K = int(os.getenv("TOP_K", "5"))
 COLLECTION = "docs__" + ("fake" if BACKEND == "fake" else re.sub(r"\W+", "_", EMBED_MODEL))
 
@@ -84,8 +85,39 @@ def _sections(text: str):
     return out
 
 
-def _windows(body: str):
-    return [body[i:i + MAX_CHARS] for i in range(0, len(body), MAX_CHARS)] or [body]
+_SENT = re.compile(r'(?<=[.!?])\s+(?=[A-Z0-9"\'(\[])')  # known limit: splits after "Dr." before a name
+_ATOMIC = re.compile(r"^\s*(```|[-*+]\s|\d+[.)]\s|\|)")  # code, list and table blocks stay whole
+
+
+def _units(body: str) -> list:
+    """Smallest pieces we never cut: a sentence, a fenced code block, or a list/table block."""
+    units = []
+    for i, seg in enumerate(re.split(r"(```.*?```)", body, flags=re.S)):
+        if i % 2:  # fenced code
+            parts = [seg.strip()]
+        else:
+            parts = []
+            for block in re.split(r"\n\s*\n", seg):
+                block = block.strip()
+                if block:
+                    parts += [block] if _ATOMIC.match(block) else [s.strip() for s in _SENT.split(block) if s.strip()]
+        for p in parts:
+            units += [p[j:j + MAX_CHARS] for j in range(0, len(p), MAX_CHARS)]  # oversized unit: hard split
+    return units
+
+
+def _windows(body: str) -> list:
+    """Pack whole units up to MAX_CHARS; each new chunk starts with the last OVERLAP_UNITS of the previous one."""
+    chunks, cur = [], []
+    for u in _units(body):
+        if cur and sum(len(x) + 1 for x in cur) + len(u) > MAX_CHARS:
+            chunks.append("\n".join(cur))
+            tail = cur[-OVERLAP_UNITS:] if OVERLAP_UNITS else []
+            cur = tail if sum(len(x) + 1 for x in tail) + len(u) <= MAX_CHARS else []
+        cur = cur + [u]
+    if cur:
+        chunks.append("\n".join(cur))
+    return chunks or [body]
 
 
 def chunk_doc(doc_id: str, raw: str) -> list:
