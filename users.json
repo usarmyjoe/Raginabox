@@ -1,0 +1,30 @@
+{
+  "alice": {
+    "pw": "pbkdf2_sha256$200000$860aecfd97224884d37709042c436125$49254661cdcaf30de20bb159ffb08b6c7b476847dedb0be7d883b06489fe2860",
+    "groups": [
+      "public",
+      "restricted"
+    ],
+    "clearance": 2,
+    "roles": [
+      "admin"
+    ]
+  },
+  "carol": {
+    "pw": "pbkdf2_sha256$200000$770c6f7f801f40f69fb7c5b5d0a86782$15c4b0203bea86a32602461ec8b838a92a6a9e38eb6b59a8ac63a7f6f041bbc1",
+    "groups": [
+      "public",
+      "restricted"
+    ],
+    "clearance": 1,
+    "roles": []
+  },
+  "bob": {
+    "pw": "pbkdf2_sha256$200000$80123959cca1f88f2b5765ac0acddd51$5fa42de77903f8db147a769a66bd12cb45b4f8ca56d4e97180a120fa433eb3d6",
+    "groups": [
+      "public"
+    ],
+    "clearance": 0,
+    "roles": []
+  }
+}

@@ -1,3 +1,6 @@
+---
+level: 2
+---
 # Core network notes
 
 ## Addressing plan
