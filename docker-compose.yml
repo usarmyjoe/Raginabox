@@ -1,0 +1,28 @@
+# Baseline layout: one default network, only the app is published (to localhost).
+# Qdrant and Ollama are reachable from other containers but not from the host.
+# The `security` branch is where this gets locked down.
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes: [qdrant_data:/qdrant/storage]
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes: [ollama_data:/root/.ollama]
+
+  app:
+    build: .
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      OLLAMA_URL: http://ollama:11434
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      LLM_MODEL: ${LLM_MODEL:-llama3.2:1b}
+    ports: ["127.0.0.1:8000:8000"]
+    volumes:
+      - ./app:/app:ro
+      - ./corpus:/corpus:ro
+    depends_on: [qdrant, ollama]
+
+volumes:
+  qdrant_data:
+  ollama_data:
